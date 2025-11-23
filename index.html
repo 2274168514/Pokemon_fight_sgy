@@ -1,19 +1,20 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gemini Pokemon Battle</title>
+    <title>Gemini Pokemon Battle: Ultimate</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Noto+Sans+SC:wght@400;700;900&display=swap');
       
       body {
         font-family: 'Noto Sans SC', sans-serif;
       }
       
       .font-display {
-        font-family: 'ZCOOL KuaiLe', cursive;
+        font-family: 'Black Ops One', cursive;
       }
 
       .shake {
@@ -33,41 +34,16 @@
 
       @keyframes flash {
         0% { opacity: 1; filter: brightness(1); }
-        50% { opacity: 0; filter: brightness(5) sepia(1) hue-rotate(-50deg) saturate(5); }
+        50% { opacity: 0; filter: brightness(10) sepia(1) hue-rotate(-50deg) saturate(5); }
         100% { opacity: 1; filter: brightness(1); }
       }
       
-      /* Additional Animations */
       @keyframes float {
         0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
+        50% { transform: translateY(-15px); }
       }
       .animate-float {
-        animation: float 3s ease-in-out infinite;
-      }
-
-      @keyframes shimmer {
-        0% { transform: translateX(-150%) skewX(-12deg); }
-        100% { transform: translateX(150%) skewX(-12deg); }
-      }
-      .animate-shimmer {
-        animation: shimmer 2.5s infinite;
-      }
-
-      .animate-slide-in-right {
-        animation: slideInRight 0.5s ease-out forwards;
-      }
-      @keyframes slideInRight {
-        from { opacity: 0; transform: translateX(50px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
-
-      .animate-slide-in-up {
-        animation: slideInUp 0.5s ease-out forwards;
-      }
-      @keyframes slideInUp {
-        from { opacity: 0; transform: translateY(50px); }
-        to { opacity: 1; transform: translateY(0); }
+        animation: float 4s ease-in-out infinite;
       }
 
       .animate-fade-in {
@@ -76,6 +52,18 @@
       @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }
+      }
+
+      /* Custom Scrollbar for Logs */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(0,0,0,0.3);
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.2);
+        border-radius: 3px;
       }
     </style>
   <script type="importmap">
@@ -89,7 +77,7 @@
 }
 </script>
 </head>
-  <body class="bg-slate-900 text-white h-full min-h-screen w-full selection:bg-yellow-500 selection:text-black overflow-x-hidden">
+  <body class="bg-black text-white h-full min-h-screen w-full overflow-hidden select-none">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>

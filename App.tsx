@@ -1,6 +1,7 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Pokemon, GameState, LogEntry, TurnState } from './types';
-import { POKEMON_ROSTER, TYPE_COLORS } from './constants';
+import { Pokemon, GameState, LogEntry, TurnState, PokemonType } from './types';
+import { POKEMON_ROSTER, TYPE_COLORS, TYPE_CHART } from './constants';
 import HealthBar from './components/HealthBar';
 import BattleLog from './components/BattleLog';
 import PokemonSprite from './components/PokemonSprite';
@@ -23,10 +24,19 @@ function App() {
     setLogs(prev => [...prev, { id: Date.now().toString() + Math.random(), text, source }]);
   };
 
+  // Get only the cool, final form Pokemon for the menu
+  const getInitialPokemon = () => {
+    const eliteIds = [6, 9, 3, 150, 448, 445, 384, 493, 487]; // Charizard, Blastoise, Venusaur, Mewtwo, Lucario, Garchomp, Rayquaza, Arceus, Giratina
+    return POKEMON_ROSTER.filter(p => eliteIds.includes(p.id));
+  };
+
   const startGame = (selected: Pokemon) => {
-    const opponent = POKEMON_ROSTER.filter(p => p.id !== selected.id)[Math.floor(Math.random() * (POKEMON_ROSTER.length - 1))];
+    let opponent = POKEMON_ROSTER[Math.floor(Math.random() * POKEMON_ROSTER.length)];
+    // Ensure opponent is different
+    while (opponent.id === selected.id) {
+        opponent = POKEMON_ROSTER[Math.floor(Math.random() * POKEMON_ROSTER.length)];
+    }
     
-    // Deep copy to reset HP if restarting
     const pCopy = JSON.parse(JSON.stringify(selected));
     const oCopy = JSON.parse(JSON.stringify(opponent));
     
@@ -36,25 +46,29 @@ function App() {
     setLogs([]);
     setTurnState(TurnState.PlayerInput);
     
-    addLog(`战斗开始！你派出了 ${pCopy.name}！`, 'system');
-    addLog(`野生的 ${oCopy.name} 出现了！`, 'system');
+    addLog(`战斗开始！就决定是你了，${pCopy.name}！`, 'system');
+    addLog(`野生的 ${oCopy.name} 跳了出来！`, 'system');
   };
 
-  const calculateDamage = (attacker: Pokemon, defender: Pokemon, movePower: number, moveType: string) => {
-    // Simplified damage formula
-    // Random variance 0.85 - 1.0
+  const calculateDamage = (attacker: Pokemon, defender: Pokemon, movePower: number, moveType: PokemonType) => {
     const variance = (Math.floor(Math.random() * 16) + 85) / 100;
-    const baseDamage = (movePower * 0.6); 
     
-    // Type effectiveness (Very simplified for demo)
-    let multiplier = 1;
-    if (moveType === 'Fire' && defender.type === 'Grass') multiplier = 2;
-    if (moveType === 'Water' && defender.type === 'Fire') multiplier = 2;
-    if (moveType === 'Grass' && defender.type === 'Water') multiplier = 2;
-    if (moveType === 'Electric' && defender.type === 'Water') multiplier = 2;
+    let typeMult = 1;
+    const defenderTypeChart = TYPE_CHART[moveType];
+    if (defenderTypeChart && defenderTypeChart[defender.type] !== undefined) {
+      typeMult = defenderTypeChart[defender.type];
+    }
+
+    const stab = attacker.type === moveType ? 1.5 : 1;
+    const level = 100; // Battle at level 100 for high stats feel
+    const attack = 300; 
+    const defense = 250; 
     
-    const damage = Math.floor(baseDamage * multiplier * variance);
-    return { damage, isCritical: Math.random() > 0.9, multiplier };
+    // Adjusted formula for higher numbers
+    let baseDamage = (((2 * level / 5 + 2) * movePower * (attack / defense)) / 50) + 2;
+    const damage = Math.floor(baseDamage * stab * typeMult * variance);
+    
+    return { damage, isCritical: Math.random() > 0.85, typeMult }; // Higher crit rate for fun
   };
 
   const handlePlayerMove = async (moveIndex: number) => {
@@ -63,10 +77,8 @@ function App() {
     const move = playerPokemon.moves[moveIndex];
     setTurnState(TurnState.Processing);
 
-    // 1. Calculate Player Damage
-    const { damage, isCritical } = calculateDamage(playerPokemon, opponentPokemon, move.power, move.type);
+    const { damage, isCritical, typeMult } = calculateDamage(playerPokemon, opponentPokemon, move.power, move.type);
     
-    // Animation
     setPlayerAttacking(true);
     setTimeout(() => {
         setPlayerAttacking(false);
@@ -74,57 +86,50 @@ function App() {
         setTimeout(() => setOpponentHit(false), 500);
     }, 200);
 
-    // Update Opponent HP
     const newOpponentHp = Math.max(0, opponentPokemon.hp - damage);
     setOpponentPokemon(prev => prev ? { ...prev, hp: newOpponentHp } : null);
 
-    // Log
     addLog(`${playerPokemon.name} 使用了 ${move.name}!`, 'player');
+    if (isCritical) addLog('击中要害！', 'effect');
+    if (typeMult > 1) addLog('效果绝佳！', 'effect');
+    if (typeMult < 1 && typeMult > 0) addLog('效果不好...', 'effect');
+    if (typeMult === 0) addLog('似乎没有效果...', 'effect');
     
-    // Gemini Narration (Async)
     generateBattleNarration(playerPokemon, opponentPokemon, move, damage, isCritical).then(text => {
         addLog(text, 'gemini');
     });
 
-    // Check Win
     if (newOpponentHp === 0) {
       setTimeout(() => {
         setTurnState(TurnState.Victory);
-        setGameState(GameState.GameOver);
+        setGameState(GameState.Victory);
         addLog(`${opponentPokemon.name} 倒下了！你赢了！`, 'system');
       }, 1000);
       return;
     }
 
-    // 2. Transition to Opponent Turn
     setTimeout(() => {
       setTurnState(TurnState.OpponentTurn);
-      handleOpponentTurn(newOpponentHp); // Pass latest HP to avoid closure staleness
+      handleOpponentTurn(newOpponentHp);
     }, 1500);
   };
 
   const handleOpponentTurn = async (currentOpponentHp: number) => {
     if (!playerPokemon || !opponentPokemon) return;
 
-    // Temporarily construct the opponent object with current HP for the AI function
     const tempOpponent = { ...opponentPokemon, hp: currentOpponentHp };
-
-    // Gemini AI Decision
     const decision = await getOpponentDecision(tempOpponent, playerPokemon);
     
     if (decision.banter) {
       addLog(`(敌方) ${opponentPokemon.name}: "${decision.banter}"`, 'opponent');
     }
 
-    // Execute AI Move
     const move = opponentPokemon.moves[decision.moveIndex];
     
-    // Wait a bit for reading
     await new Promise(r => setTimeout(r, 1000));
 
-    const { damage, isCritical } = calculateDamage(opponentPokemon, playerPokemon, move.power, move.type);
+    const { damage, isCritical, typeMult } = calculateDamage(opponentPokemon, playerPokemon, move.power, move.type);
 
-    // Animation
     setOpponentAttacking(true);
     setTimeout(() => {
         setOpponentAttacking(false);
@@ -132,7 +137,6 @@ function App() {
         setTimeout(() => setPlayerHit(false), 500);
     }, 200);
 
-    // Update Player HP
     setPlayerPokemon(prev => {
         if (!prev) return null;
         const newHp = Math.max(0, prev.hp - damage);
@@ -143,7 +147,6 @@ function App() {
                 addLog(`${playerPokemon.name} 倒下了！你输了...`, 'system');
               }, 1000);
         } else {
-             // Back to player
              setTimeout(() => {
                  setTurnState(TurnState.PlayerInput);
              }, 1000);
@@ -151,49 +154,56 @@ function App() {
         return { ...prev, hp: newHp };
     });
 
-    // Log
     addLog(`${opponentPokemon.name} 使用了 ${move.name}!`, 'opponent');
-
-     // Gemini Narration for Opponent
-     generateBattleNarration(opponentPokemon, playerPokemon, move, damage, isCritical).then(text => {
+    if (isCritical) addLog('击中要害！', 'effect');
+    if (typeMult > 1) addLog('效果绝佳！', 'effect');
+    
+    generateBattleNarration(opponentPokemon, playerPokemon, move, damage, isCritical).then(text => {
         addLog(text, 'gemini');
     });
   };
 
-  // --- Render Helpers ---
-
   const renderMenu = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-br from-slate-800 to-slate-900">
-      <h1 className="text-6xl font-display text-yellow-400 mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] tracking-wider">
-        宝可梦大乱斗
-      </h1>
-      <p className="text-slate-400 mb-12 text-lg">Powered by Gemini AI</p>
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-slate-950 overflow-hidden relative font-sans">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 via-slate-950 to-black"></div>
       
-      <h2 className="text-2xl text-white mb-6">请选择你的伙伴:</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl w-full">
-        {POKEMON_ROSTER.map(p => (
-          <button
-            key={p.id}
-            onClick={() => startGame(p)}
-            className="group relative overflow-hidden rounded-xl bg-slate-800 border-2 border-slate-700 hover:border-yellow-400 transition-all duration-300 hover:shadow-[0_0_30px_rgba(250,204,21,0.3)] hover:-translate-y-2"
-          >
-            <div className={`absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity ${TYPE_COLORS[p.type]}`} />
-            <div className="p-6 flex flex-col items-center">
-                <div className="w-32 h-32 rounded-full overflow-hidden mb-4 border-4 border-white/10 group-hover:border-white/30 transition-colors bg-black/20 p-2">
-                    <img src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${p.id}.png`} alt={p.name} className="w-full h-full object-contain" />
+      <div className="z-10 text-center mb-10 relative">
+          <h1 className="text-5xl md:text-7xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)] tracking-tight">
+            POKEMON BATTLE
+          </h1>
+          <p className="text-blue-400 text-lg font-bold mt-2 tracking-[0.5em] uppercase">Ultimate Edition</p>
+      </div>
+      
+      <div className="z-10 w-full max-w-7xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
+            {getInitialPokemon().map(p => (
+            <button
+                key={p.id}
+                onClick={() => startGame(p)}
+                className="group relative h-48 overflow-hidden rounded-2xl bg-slate-900/60 backdrop-blur-md border border-slate-700 hover:border-white/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:-translate-y-1 flex items-center p-4"
+            >
+                {/* Background gradient based on type */}
+                <div className={`absolute inset-0 opacity-20 bg-gradient-to-r ${TYPE_COLORS[p.type].replace('bg-', 'from-')} to-transparent group-hover:opacity-40 transition-opacity`}></div>
+                
+                {/* Sprite */}
+                <div className="w-1/2 flex items-center justify-center relative z-10">
+                     <img 
+                        src={`https://play.pokemonshowdown.com/sprites/xyani/${p.englishName.toLowerCase()}.gif`} 
+                        alt={p.name}
+                        className="h-32 object-contain scale-125 drop-shadow-xl group-hover:scale-150 transition-transform duration-500"
+                        onError={(e) => { e.currentTarget.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${p.id}.png`; }}
+                     />
                 </div>
-              <h3 className="text-xl font-bold text-white mb-1">{p.name}</h3>
-              <span className={`text-xs px-2 py-1 rounded-full bg-slate-900 text-white/80`}>{p.type}</span>
-              
-              <div className="mt-4 w-full space-y-1">
-                 <div className="flex justify-between text-xs text-gray-400"><span>HP</span><span>{p.maxHp}</span></div>
-                 <div className="w-full bg-gray-700 h-1 rounded-full overflow-hidden">
-                     <div className={`h-full ${TYPE_COLORS[p.type]} w-3/4`}></div>
-                 </div>
-              </div>
-            </div>
-          </button>
-        ))}
+                
+                {/* Info */}
+                <div className="w-1/2 text-right z-10 flex flex-col items-end justify-center">
+                    <h3 className="text-2xl font-black text-white mb-2 italic">{p.name}</h3>
+                    <span className={`px-3 py-1 text-xs font-bold text-white rounded shadow-lg ${TYPE_COLORS[p.type]}`}>{p.type}</span>
+                    <div className="mt-2 text-xs text-gray-400">HP {p.maxHp}</div>
+                </div>
+            </button>
+            ))}
+        </div>
       </div>
     </div>
   );
@@ -201,41 +211,63 @@ function App() {
   const renderBattle = () => {
     if (!playerPokemon || !opponentPokemon) return null;
 
+    // Dynamic 3D Backgrounds using CSS Gradients to simulate ground/sky
+    const isCave = ['Rock', 'Ground', 'Ghost', 'Dragon', 'Poison', 'Steel', 'Dark'].includes(opponentPokemon.type);
+    
+    // Sky Gradient
+    const skyClass = isCave 
+        ? "bg-gradient-to-b from-gray-900 via-purple-900 to-slate-900" 
+        : "bg-gradient-to-b from-blue-500 via-blue-300 to-white";
+        
+    // Ground Gradient (Perspective Plane)
+    const groundClass = isCave
+        ? "bg-[radial-gradient(circle,_var(--tw-gradient-stops))] from-slate-700 via-slate-800 to-black"
+        : "bg-[radial-gradient(circle,_var(--tw-gradient-stops))] from-emerald-400 via-emerald-600 to-emerald-800";
+
     return (
-      <div className="flex flex-col h-screen bg-slate-900 relative">
-        {/* Background Ambience */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-             <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 blur-[120px] rounded-full mix-blend-screen animate-pulse"></div>
-             <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-900/20 blur-[120px] rounded-full mix-blend-screen animate-pulse" style={{animationDelay: '1s'}}></div>
+      <div className={`flex flex-col h-screen relative overflow-hidden ${skyClass}`}>
+        
+        {/* 3D Scene Container */}
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{perspective: '1200px'}}>
+             {/* The Floor Plane - Adjusted angle for better scale */}
+             <div className={`
+                absolute w-[200vw] h-[200vh] top-[55%] left-[-50%] 
+                origin-top transform rotate-x-[75deg] 
+                ${groundClass} opacity-100 shadow-[0_0_100px_rgba(0,0,0,0.5)_inset]
+             `}>
+                {/* Grid Lines for depth effect */}
+                <div className="absolute inset-0 opacity-30" 
+                     style={{
+                         backgroundImage: `linear-gradient(rgba(255,255,255,0.2) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,0.2) 2px, transparent 2px)`,
+                         backgroundSize: '100px 100px'
+                     }}>
+                </div>
+                {/* Center Circle */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border-[20px] border-white/10 rounded-full"></div>
+             </div>
         </div>
 
-        {/* Battle Arena */}
-        <div className="flex-1 relative flex flex-col max-w-5xl mx-auto w-full px-4 py-6">
+        {/* HUD Layer */}
+        <div className="relative z-10 flex flex-col h-full max-w-6xl mx-auto w-full p-2 sm:p-4 pointer-events-none">
             
-            {/* Top Bar: Opponent Status */}
-            <div className="flex justify-end mb-8 animate-slide-in-right">
-                <div className="w-full max-w-md">
-                    <div className="flex justify-between items-end mb-2 px-1">
-                         <h3 className="text-xl font-bold text-white drop-shadow-md">{opponentPokemon.name}</h3>
-                         <span className={`text-xs px-2 py-1 rounded bg-slate-800 ${TYPE_COLORS[opponentPokemon.type]} text-white`}>{opponentPokemon.type}</span>
+            {/* Opponent HUD */}
+            <div className="flex justify-between items-start pt-8 px-4">
+                <div className="flex-1"></div>
+                <div className="bg-black/60 backdrop-blur-md text-white p-4 rounded-xl border-b-4 border-red-500 shadow-2xl w-full max-w-sm pointer-events-auto transform skew-x-[-12deg]">
+                    <div className="transform skew-x-[12deg]">
+                        <div className="flex justify-between items-baseline mb-2">
+                             <h3 className="text-xl font-bold truncate tracking-wide">{opponentPokemon.name}</h3>
+                             <span className="text-sm font-bold text-red-400">Lv.100</span>
+                        </div>
+                        <HealthBar current={opponentPokemon.hp} max={opponentPokemon.maxHp} />
                     </div>
-                    <HealthBar current={opponentPokemon.hp} max={opponentPokemon.maxHp} label="敌方 HP" />
                 </div>
             </div>
 
-            {/* Middle: Sprites */}
-            <div className="flex-1 flex justify-between items-center relative px-8 sm:px-20">
-                {/* Player Position (Left) */}
-                <div className="absolute bottom-10 left-4 sm:left-20 z-10">
-                     <PokemonSprite 
-                        pokemon={playerPokemon} 
-                        isAttacking={playerAttacking}
-                        isHit={playerHit}
-                     />
-                </div>
-
-                {/* Opponent Position (Right, Higher) */}
-                <div className="absolute top-10 right-4 sm:right-20 z-0">
+            {/* Battle Arena (Sprites) - Improved Z-Index and positioning */}
+            <div className="flex-1 relative w-full h-full pointer-events-none">
+                {/* Opponent Sprite (Far) */}
+                <div className="absolute top-[5%] right-[20%] sm:right-[25%] z-0 transform scale-90">
                      <PokemonSprite 
                         pokemon={opponentPokemon} 
                         isOpponent 
@@ -244,84 +276,97 @@ function App() {
                      />
                 </div>
 
-                 {/* VS Graphic or Center Effect */}
-                 {turnState === TurnState.Processing && (
-                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                         <div className="text-6xl font-display text-yellow-400 animate-bounce drop-shadow-lg">
-                             VS
-                         </div>
-                     </div>
-                 )}
+                {/* Player Sprite (Near) */}
+                <div className="absolute bottom-[-5%] left-[10%] sm:left-[15%] z-20 transform scale-110">
+                     <PokemonSprite 
+                        pokemon={playerPokemon} 
+                        isAttacking={playerAttacking}
+                        isHit={playerHit}
+                     />
+                </div>
             </div>
 
-            {/* Bottom: Player Status & Controls */}
-            <div className="mt-auto bg-slate-800/80 backdrop-blur-md rounded-t-3xl border-t-4 border-slate-700 shadow-2xl p-6 animate-slide-in-up">
-                <div className="flex flex-col md:flex-row gap-6">
+            {/* Player Controls (Bottom) */}
+            <div className="pointer-events-auto mt-auto pb-6">
+                <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-end">
                     
-                    {/* Player Stats */}
-                    <div className="w-full md:w-1/3 space-y-2">
-                         <div className="flex justify-between items-end mb-1">
-                             <h3 className="text-2xl font-bold text-white">{playerPokemon.name}</h3>
-                             <span className="text-sm text-gray-400 font-mono">Lv. 50</span>
-                         </div>
-                         <HealthBar current={playerPokemon.hp} max={playerPokemon.maxHp} label="我的 HP" />
-                         <div className="mt-4">
-                             <BattleLog logs={logs} />
+                    {/* Battle Log Box - More styled */}
+                    <div className="w-full md:w-1/3 order-2 md:order-1 h-32 md:h-40 bg-slate-900/90 rounded-2xl p-4 border-2 border-slate-600 shadow-2xl relative overflow-hidden">
+                         <BattleLog logs={logs} />
+                         <div className="absolute top-0 right-0 p-1">
+                            <div className="w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
                          </div>
                     </div>
 
-                    {/* Controls */}
-                    <div className="w-full md:w-2/3 grid grid-cols-2 gap-3">
-                        {playerPokemon.moves.map((move, idx) => (
-                            <button
-                                key={move.name}
-                                disabled={turnState !== TurnState.PlayerInput}
-                                onClick={() => handlePlayerMove(idx)}
-                                className={`
-                                    relative group overflow-hidden rounded-xl p-4 text-left transition-all
-                                    border-2 
-                                    ${turnState === TurnState.PlayerInput 
-                                        ? 'border-slate-600 hover:border-white bg-slate-700 hover:bg-slate-600 cursor-pointer transform hover:-translate-y-1 hover:shadow-xl' 
-                                        : 'border-slate-800 bg-slate-800 opacity-50 cursor-not-allowed'}
-                                `}
-                            >
-                                {/* Hover Glow based on Type */}
-                                <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity ${TYPE_COLORS[move.type]}`}></div>
-                                
-                                <div className="flex justify-between items-start relative z-10">
-                                    <span className="font-bold text-lg text-white">{move.name}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border border-white/20 text-white/70`}>
-                                        {move.type}
-                                    </span>
+                    {/* Move Selection & HP */}
+                    <div className="w-full md:w-2/3 order-1 md:order-2 flex flex-col gap-4">
+                        {/* Player HP */}
+                        <div className="self-end w-full max-w-md bg-slate-800/90 p-4 rounded-xl border-b-4 border-yellow-500 shadow-xl transform skew-x-[-12deg] mb-2">
+                            <div className="transform skew-x-[12deg]">
+                                <div className="flex justify-between items-center mb-1">
+                                    <h3 className="text-xl font-bold text-yellow-400">{playerPokemon.name}</h3>
+                                    <span className="text-xs text-gray-400 font-mono">{playerPokemon.hp}/{playerPokemon.maxHp}</span>
                                 </div>
-                                <div className="flex justify-between mt-2 text-sm text-gray-400 relative z-10">
-                                    <span>威力: {move.power}</span>
-                                    <span>{move.isSpecial ? '特殊' : '物理'}</span>
-                                </div>
-                            </button>
-                        ))}
+                                <HealthBar current={playerPokemon.hp} max={playerPokemon.maxHp} label="HP" />
+                            </div>
+                         </div>
+
+                        {/* Moves Grid */}
+                        <div className="grid grid-cols-2 gap-3 bg-slate-900/50 p-2 rounded-2xl backdrop-blur-sm">
+                            {playerPokemon.moves.map((move, idx) => (
+                                <button
+                                    key={idx}
+                                    disabled={turnState !== TurnState.PlayerInput}
+                                    onClick={() => handlePlayerMove(idx)}
+                                    className={`
+                                        relative overflow-hidden rounded-lg p-4 text-left transition-all duration-200
+                                        ${turnState === TurnState.PlayerInput 
+                                            ? `hover:scale-[1.02] shadow-lg hover:shadow-xl active:scale-95 ${TYPE_COLORS[move.type]} text-white border-2 border-white/20` 
+                                            : 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed'}
+                                    `}
+                                >
+                                    {/* Glass sheen effect */}
+                                    <div className="absolute top-0 left-0 w-full h-1/2 bg-white/10"></div>
+                                    
+                                    <div className="relative z-10 flex justify-between items-center">
+                                        <span className="font-black text-lg drop-shadow-md">{move.name}</span>
+                                        <span className="text-xs font-bold bg-black/30 px-2 py-1 rounded">{move.type}</span>
+                                    </div>
+                                    <div className="relative z-10 text-xs opacity-90 mt-1 font-mono">
+                                        PWR: {move.power} | {move.isSpecial ? 'Special' : 'Physical'}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        {/* Game Over Overlay */}
-        {gameState === GameState.GameOver && (
-            <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center backdrop-blur-sm animate-fade-in">
-                <div className="bg-slate-800 p-8 rounded-2xl border-4 border-yellow-500 max-w-md w-full text-center shadow-2xl transform scale-110">
-                    <h2 className={`text-5xl font-display mb-4 ${turnState === TurnState.Victory ? 'text-yellow-400' : 'text-gray-400'}`}>
-                        {turnState === TurnState.Victory ? '胜利!' : '败北...'}
+        {/* Overlay Screens */}
+        {(gameState === GameState.GameOver || gameState === GameState.Victory) && (
+            <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in backdrop-blur-md">
+                <div className="max-w-lg w-full bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-white/10 rounded-3xl p-8 text-center shadow-[0_0_50px_rgba(0,0,0,0.5)] relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-yellow-400 via-red-500 to-purple-600"></div>
+                    
+                    <h2 className={`text-6xl font-black italic mb-8 tracking-tighter ${turnState === TurnState.Victory ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'text-gray-500'}`}>
+                        {turnState === TurnState.Victory ? 'VICTORY' : 'DEFEATED'}
                     </h2>
-                    <p className="text-white mb-8 text-lg">
-                        {turnState === TurnState.Victory 
-                            ? `你和 ${playerPokemon.name} 表现得太棒了！` 
-                            : `不要气馁，下次一定会赢的！`}
-                    </p>
+                    
+                    {/* Show MVP Pokemon */}
+                    <div className="h-48 flex justify-center mb-8 relative">
+                         <div className="absolute inset-0 bg-white/5 rounded-full blur-2xl transform scale-75"></div>
+                        <img 
+                            src={`https://play.pokemonshowdown.com/sprites/xyani/${playerPokemon.englishName.toLowerCase()}.gif`} 
+                            className="h-full object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] z-10"
+                        />
+                    </div>
+
                     <button 
                         onClick={() => setGameState(GameState.Menu)}
-                        className="px-8 py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-full text-xl transition-transform hover:scale-105 shadow-lg"
+                        className="w-full py-4 bg-white text-black font-black text-xl rounded-xl hover:bg-gray-200 transition-colors shadow-lg uppercase tracking-widest"
                     >
-                        返回主菜单
+                        Play Again
                     </button>
                 </div>
             </div>
@@ -333,7 +378,7 @@ function App() {
   return (
     <>
       {gameState === GameState.Menu && renderMenu()}
-      {(gameState === GameState.Battle || gameState === GameState.GameOver) && renderBattle()}
+      {(gameState === GameState.Battle || gameState === GameState.GameOver || gameState === GameState.Victory) && renderBattle()}
     </>
   );
 }
