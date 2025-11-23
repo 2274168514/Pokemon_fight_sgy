@@ -3,7 +3,17 @@ import { Pokemon, Move } from "../types";
 
 // Initialize Gemini Client
 // Note: process.env.API_KEY is assumed to be available.
-const apiKey = process.env.API_KEY || '';
+// We add a safe check for 'process' to avoid crashes in strict browser environments where it's undefined.
+let apiKey = '';
+try {
+  // @ts-ignore
+  if (typeof process !== 'undefined' && process.env) {
+    apiKey = process.env.API_KEY || '';
+  }
+} catch (e) {
+  console.warn('API Key extraction failed, running without key (simulated mode).');
+}
+
 const ai = new GoogleGenAI({ apiKey });
 
 // We use 'gemini-2.5-flash' for low latency responses which is crucial for games.

@@ -36,6 +36,47 @@
         50% { opacity: 0; filter: brightness(5) sepia(1) hue-rotate(-50deg) saturate(5); }
         100% { opacity: 1; filter: brightness(1); }
       }
+      
+      /* Additional Animations */
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+      }
+      .animate-float {
+        animation: float 3s ease-in-out infinite;
+      }
+
+      @keyframes shimmer {
+        0% { transform: translateX(-150%) skewX(-12deg); }
+        100% { transform: translateX(150%) skewX(-12deg); }
+      }
+      .animate-shimmer {
+        animation: shimmer 2.5s infinite;
+      }
+
+      .animate-slide-in-right {
+        animation: slideInRight 0.5s ease-out forwards;
+      }
+      @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(50px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
+      .animate-slide-in-up {
+        animation: slideInUp 0.5s ease-out forwards;
+      }
+      @keyframes slideInUp {
+        from { opacity: 0; transform: translateY(50px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
     </style>
   <script type="importmap">
 {
@@ -48,7 +89,8 @@
 }
 </script>
 </head>
-  <body class="bg-slate-900 text-white h-screen w-screen overflow-hidden selection:bg-yellow-500 selection:text-black">
+  <body class="bg-slate-900 text-white h-full min-h-screen w-full selection:bg-yellow-500 selection:text-black overflow-x-hidden">
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
