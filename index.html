@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Pokemon Battle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;700&display=swap');
+      
+      body {
+        font-family: 'Noto Sans SC', sans-serif;
+      }
+      
+      .font-display {
+        font-family: 'ZCOOL KuaiLe', cursive;
+      }
+
+      .shake {
+        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+
+      @keyframes shake {
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+        40%, 60% { transform: translate3d(4px, 0, 0); }
+      }
+
+      .hit-flash {
+        animation: flash 0.2s ease-out;
+      }
+
+      @keyframes flash {
+        0% { opacity: 1; filter: brightness(1); }
+        50% { opacity: 0; filter: brightness(5) sepia(1) hue-rotate(-50deg) saturate(5); }
+        100% { opacity: 1; filter: brightness(1); }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-900 text-white h-screen w-screen overflow-hidden selection:bg-yellow-500 selection:text-black">
+    <div id="root"></div>
+  </body>
+</html>
